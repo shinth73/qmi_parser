@@ -9,12 +9,14 @@ import win32com.client
 import struct
 import re
 import io
+import json
 
 # QMI.py의 상수들 (실제 QMI.py에서 가져온 값들)
 LOG_PACKET_DEFAULT = "24 00 8F 13 00 00 9A 9E CD 7B C2 00"
 QCAT_MODEL_NUMBER = 165
 MAX_BUFFER_BYTES_PER_LINE = 32
 MAX_OUTPUT_BUF_SIZE = ((MAX_BUFFER_BYTES_PER_LINE * 3) + 2)
+CONFIG_FILE = "qmi_parser_config.json"
 
 
 def process_qmi_packet(qcat_app, combined_fh, parsed_only_fh, log_packet, log_timestamp=""):
@@ -52,23 +54,23 @@ def process_qmi_packet(qcat_app, combined_fh, parsed_only_fh, log_packet, log_ti
         # log_timestamp가 있으면 QCAT 헤더를 타임스탬프로 교체 시도
         if log_timestamp:
             # QCAT header format: 2013 Feb  5 10:20:30.123 [AB] 0x1234  QMI Link 1 TX PDU
-            qcat_header_pattern = r'\d{4}\s+\w{3}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2}\.\d+\s+\[.{2,8}\]\s+0x....\s+QMI Link 1 TX PDU'
-            replacement = f"""--------------------------------------------------\n{log_timestamp}"""
+            qcat_header_pattern = r'\d{4}\s+\w{3}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2}\.\d+\s+[[.{2,8}]\s+0x....\s+QMI Link 1 TX PDU'
+            replacement = f"""--------------------------------------------------\ntimestamp {log_timestamp}"""
             new_text, count = re.subn(qcat_header_pattern, replacement, parsed_text, count=1)
             if count > 0:
                 parsed_text = new_text
             else:
                 # 패턴이 일치하지 않으면 기존 방식으로 대체
-                replacement_fallback = f"""--------------------------------------------------\n{log_timestamp} builded. Parsed by QCAT"""
+                replacement_fallback = f"""--------------------------------------------------\ntimestamp {log_timestamp} builded. Parsed by QCAT"""
                 parsed_text = re.sub(
-                    r' ([0-9]{2}):([0-9]{2}):([0-9]{2}\.[0-9]{1,9})\s+[[.]{{2,8}}]\]\s+(0x....)  QMI Link 1 TX PDU',
+                    r' ([0-9]{2}):([0-9]{2}):([0-9]{2}\.[0-9]{1,9})\s+[[.{2,8}]\s+(0x....)  QMI Link 1 TX PDU',
                     replacement_fallback,
                     parsed_text
                 )
         else:
             # 타임스탬프가 없으면 기존 방식으로 동작
             parsed_text = re.sub(
-                r' ([0-9]{2}):([0-9]{2}):([0-9]{2}\.[0-9]{1,9})\s+[[.]{{2,8}}]\]\s+(0x....)  QMI Link 1 TX PDU',
+                r' ([0-9]{2}):([0-9]{2}):([0-9]{2}\.[0-9]{1,9})\s+[[.{2,8}]\s+(0x....)  QMI Link 1 TX PDU',
                 'builded. Parsed by QCAT',
                 parsed_text
             )
@@ -345,7 +347,7 @@ class QMILogProcessor:
 class QMIParserGUI:
     def __init__(self, root):
         self.root = root
-        self.root.title("QMI Log Parser v1.3")
+        self.root.title("QMI Log Parser")
         self.root.geometry("1280x800")
         self.root.minsize(1000, 700)
 
@@ -360,6 +362,7 @@ class QMIParserGUI:
             "danger": "#e06c75",
             "warning": "#e5c07b",
             "info": "#56b6c2",
+            "highlight": "#e5c07b",
         }
         self.fonts = {
             "title": ("맑은 고딕", 16, "bold"),
@@ -385,6 +388,12 @@ class QMIParserGUI:
         self.processor = QMILogProcessor()
         self.is_processing = False
         self.cancel_processing = False
+        self.original_texts = {}
+        self.regex_var = tk.BooleanVar()
+
+        # 설정 불러오기 및 종료 시 저장 바인딩
+        self.load_config()
+        self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
 
         # UI 설정
         self.setup_ui()
@@ -399,8 +408,16 @@ class QMIParserGUI:
         style.configure('.', 
                         background=self.colors["bg"], 
                         foreground=self.colors["fg"],
-                        font=self.fonts["body"])
+                        font=self.fonts["body"],
+                        bordercolor=self.colors["bg_light"],
+                        lightcolor=self.colors["bg_light"],
+                        darkcolor=self.colors["bg_dark"])
         style.configure('TFrame', background=self.colors["bg"])
+        style.configure('TCheckbutton', background=self.colors["bg"], foreground=self.colors["fg"])
+        style.map('TCheckbutton', 
+                  background=[('active', self.colors["bg"])],
+                  indicatorcolor=[('selected', self.colors["primary"]), ('pressed', self.colors["primary"])])
+
         
         # --- 제목 ---
         style.configure('Title.TLabel', 
@@ -420,13 +437,13 @@ class QMIParserGUI:
                         relief="flat")
         style.map('TButton',
                   background=[('active', self.colors["bg_light"]), ('!disabled', self.colors["bg_dark"])],
-                  foreground=[('!disabled', self.colors["primary"])])
+                  foreground=[('!disabled', self.colors["primary"])] )
 
         style.configure('Primary.TButton', foreground=self.colors["secondary"])
         style.map('Primary.TButton', foreground=[('!disabled', self.colors["secondary"])])
         
         style.configure('Danger.TButton', foreground=self.colors["danger"])
-        style.map('Danger.TButton', foreground=[('!disabled', self.colors["danger"])] )
+        style.map('Danger.TButton', foreground=[('!disabled', self.colors["danger"])])
 
         # --- 레이블 프레임 ---
         style.configure('TLabelframe', 
@@ -468,29 +485,22 @@ class QMIParserGUI:
         style.configure('Warning.Status.TLabel', foreground=self.colors["warning"])
 
     def setup_ui(self):
+        """UI 설정"""
         # 메인 컨테이너
-        main_container = ttk.Frame(self.root, padding=20)
+        main_container = ttk.Frame(self.root, padding=(20, 10))
         main_container.pack(fill=tk.BOTH, expand=True)
-
-        # 헤더
-        self.setup_header(main_container)
 
         # 메인 콘텐츠 영역
         content_paned = ttk.PanedWindow(main_container, orient=tk.HORIZONTAL)
-        content_paned.pack(fill=tk.BOTH, expand=True, pady=20)
+        content_paned.pack(fill=tk.BOTH, expand=True, pady=10)
 
         # 좌측 패널 (파일 처리와 텍스트 입력)
         left_panel = ttk.Frame(content_paned, padding=5)
-        content_paned.add(left_panel, weight=2)
+        content_paned.add(left_panel, weight=1)
 
         # 우측 패널 (출력)
         right_panel = ttk.Frame(content_paned, padding=5)
         content_paned.add(right_panel, weight=3)
-
-        # 좌우 패널 구분선
-        s = ttk.Separator(content_paned, orient=tk.VERTICAL)
-        content_paned.add(s)
-
 
         # 좌측 패널 구성
         self.setup_left_panel(left_panel)
@@ -501,17 +511,6 @@ class QMIParserGUI:
         # 하단 상태바
         self.setup_status_bar(main_container)
 
-    def setup_header(self, parent):
-        """헤더 영역 설정"""
-        header_frame = ttk.Frame(parent)
-        header_frame.pack(fill=tk.X, pady=(0, 10))
-
-        title_label = ttk.Label(header_frame, text="QMI Log Parser", style='Title.TLabel')
-        title_label.pack(side=tk.LEFT)
-
-        version_label = ttk.Label(header_frame, text="v1.3", style='Subtitle.TLabel')
-        version_label.pack(side=tk.RIGHT, anchor=tk.S)
-
     def setup_left_panel(self, parent):
         """좌측 패널 설정 - 파일 처리와 텍스트 입력"""
         parent.grid_columnconfigure(0, weight=1)
@@ -519,29 +518,29 @@ class QMIParserGUI:
 
         # 파일 처리 섹션
         file_section = ttk.LabelFrame(parent, text="File Processing")
-        file_section.grid(row=0, column=0, sticky="ew", pady=(0, 20))
+        file_section.grid(row=0, column=0, sticky="ew", pady=(0, 10))
         file_section.grid_columnconfigure(1, weight=1)
 
         # 드래그 앤 드롭 영역
         self.drop_frame = tk.Frame(file_section, bg=self.colors["bg_dark"], relief='solid', bd=1)
-        self.drop_frame.grid(row=0, column=0, columnspan=2, sticky="ew", pady=10, ipady=20)
+        self.drop_frame.grid(row=0, column=0, columnspan=2, sticky="ew", pady=5, ipady=10)
 
         self.drop_label = tk.Label(self.drop_frame,
                                    text="Drag & Drop QMI Log File Here\nor Click to Browse",
                                    font=self.fonts["body"],
                                    fg=self.colors["fg"],
                                    bg=self.colors["bg_dark"])
-        self.drop_label.pack(expand=True, padx=20, pady=20)
+        self.drop_label.pack(expand=True, padx=10, pady=10)
 
         # 파일 선택 버튼과 경로 표시
         self.browse_button = ttk.Button(file_section, text="Browse File",
                                         command=self.browse_file)
-        self.browse_button.grid(row=1, column=0, pady=(0, 10), padx=(0, 10))
+        self.browse_button.grid(row=1, column=0, pady=(0, 5), padx=(0, 10))
 
         self.file_path_var = tk.StringVar()
         self.file_label = ttk.Label(file_section, textvariable=self.file_path_var,
                                     foreground=self.colors["info"], font=self.fonts["body"])
-        self.file_label.grid(row=1, column=1, sticky="ew", pady=(0, 10))
+        self.file_label.grid(row=1, column=1, sticky="ew", pady=(0, 5))
 
         # 파일 처리 버튼
         button_frame = ttk.Frame(file_section)
@@ -628,20 +627,43 @@ class QMIParserGUI:
                    style='Danger.TButton').pack(side=tk.RIGHT)
 
     def create_output_tab(self, title):
-        """Helper to create a text widget tab"""
-        frame = ttk.Frame(self.output_notebook)
-        self.output_notebook.add(frame, text=title)
+        """Helper to create a text widget tab with search and copy"""
+        tab_frame = ttk.Frame(self.output_notebook)
+        self.output_notebook.add(tab_frame, text=title)
         
-        frame.grid_rowconfigure(1, weight=1)
-        frame.grid_columnconfigure(0, weight=1)
+        tab_frame.grid_rowconfigure(1, weight=1)
+        tab_frame.grid_columnconfigure(0, weight=1)
 
-        button_frame = ttk.Frame(frame)
-        button_frame.grid(row=0, column=0, columnspan=2, sticky="ew")
+        # --- 상단 컨트롤 프레임 ---
+        control_frame = ttk.Frame(tab_frame)
+        control_frame.grid(row=0, column=0, columnspan=2, sticky="ew", pady=(5, 10))
+        control_frame.grid_columnconfigure(0, weight=1)
 
-        copy_button = ttk.Button(button_frame, text="📋 Copy All", command=lambda: self.copy_to_clipboard(text_widget))
-        copy_button.pack(side=tk.RIGHT, pady=(0, 5))
+        # 검색 기능
+        search_entry = ttk.Entry(control_frame, font=self.fonts["body"])
+        search_entry.grid(row=0, column=0, sticky="ew", padx=(0, 10))
 
-        text_widget = tk.Text(frame, wrap=tk.WORD,
+        regex_check = ttk.Checkbutton(control_frame, text="Regex", variable=self.regex_var)
+        regex_check.grid(row=0, column=1, padx=(0, 10))
+
+        search_button = ttk.Button(control_frame, text="🔍 Search", 
+                                   command=lambda: self.perform_search(text_widget, search_entry, self.regex_var))
+        search_button.grid(row=0, column=2, padx=(0, 5))
+
+        clear_button = ttk.Button(control_frame, text="Clear", 
+                                  command=lambda: self.clear_search(text_widget, search_entry))
+        clear_button.grid(row=0, column=3, padx=(0, 10))
+
+        copy_button = ttk.Button(control_frame, text="📋 Copy All", 
+                                 command=lambda: self.copy_to_clipboard(text_widget))
+        copy_button.grid(row=0, column=4)
+        
+        # 검색창 Key/Return 이벤트 바인딩
+        search_entry.bind("<KeyRelease>", lambda event: self.on_search_key_release(event, text_widget, search_entry))
+        search_entry.bind("<Return>", lambda event: self.perform_search(text_widget, search_entry, self.regex_var))
+
+        # --- 텍스트 위젯 ---
+        text_widget = tk.Text(tab_frame, wrap=tk.WORD,
                               font=self.fonts["monospace"],
                               bg=self.colors["bg_dark"],
                               fg=self.colors["fg"],
@@ -650,13 +672,90 @@ class QMIParserGUI:
                               selectbackground=self.colors["bg_light"],
                               selectforeground=self.colors["fg"])
         
-        scrollbar = ttk.Scrollbar(frame, orient="vertical", command=text_widget.yview)
+        text_widget.tag_configure("highlight", foreground=self.colors["highlight"])
+        text_widget.tag_configure("separator", foreground=self.colors["primary"])
+        text_widget.tag_configure("timestamp_highlight", foreground=self.colors["danger"])
+
+        scrollbar = ttk.Scrollbar(tab_frame, orient="vertical", command=text_widget.yview)
         text_widget.configure(yscrollcommand=scrollbar.set)
         
         text_widget.grid(row=1, column=0, sticky="nsew")
         scrollbar.grid(row=1, column=1, sticky="ns")
         
         return text_widget
+
+    def on_search_key_release(self, event, text_widget, search_entry):
+        """Handle key release in search entry to auto-clear search."""
+        if not search_entry.get():
+            self.clear_search(text_widget, search_entry)
+
+    def perform_search(self, text_widget, search_entry, regex_var):
+        query = search_entry.get()
+        use_regex = regex_var.get()
+
+        if not query:
+            self.clear_search(text_widget, search_entry)
+            return
+
+        original_content = self.original_texts.get(text_widget, "")
+        if not original_content:
+            self.update_status("No content to search.", "warning")
+            return
+
+        matching_lines = []
+        try:
+            if use_regex:
+                pattern = re.compile(query, re.IGNORECASE)
+                for line in original_content.splitlines():
+                    if pattern.search(line):
+                        matching_lines.append(line)
+            else:
+                for line in original_content.splitlines():
+                    if query.lower() in line.lower():
+                        matching_lines.append(line)
+        except re.error as e:
+            self.update_status(f"Regex Error: {e}", "error")
+            return
+
+        text_widget.config(state=tk.NORMAL)
+        text_widget.delete("1.0", tk.END)
+        if matching_lines:
+            text_widget.insert("1.0", "\n".join(matching_lines))
+            self.update_status(f"Found {len(matching_lines)} matching lines.", "success")
+        else:
+            text_widget.insert("1.0", f"No lines matching: '{query}'")
+            self.update_status("No matches found.", "info")
+        
+        self.highlight_text(text_widget, {"highlight": [query]})
+        text_widget.config(state=tk.DISABLED)
+
+    def clear_search(self, text_widget, search_entry):
+        search_entry.delete(0, tk.END)
+        original_content = self.original_texts.get(text_widget, "")
+        text_widget.config(state=tk.NORMAL)
+        text_widget.delete("1.0", tk.END)
+        text_widget.insert("1.0", original_content)
+        self.highlight_text(text_widget, {
+            "timestamp_highlight": ["timestamp"],
+            "highlight": ["QmiType", "IFType", "QmiLength", "QmiCtlFlags"],
+            "separator": ["--------------------------------------------------"]
+        })
+        text_widget.config(state=tk.DISABLED)
+        self.update_status("Search cleared.", "info")
+
+    def highlight_text(self, text_widget, tag_keyword_map):
+        for tag, keywords in tag_keyword_map.items():
+            text_widget.tag_remove(tag, "1.0", tk.END)
+            for keyword in keywords:
+                start_pos = "1.0"
+                while True:
+                    start_pos = text_widget.search(keyword, start_pos, stopindex=tk.END, nocase=True)
+                    if not start_pos:
+                        break
+                    line_start = f"{start_pos.split('.')[0]}.0"
+                    line_end = f"{start_pos.split('.')[0]}.end"
+                    text_widget.tag_add(tag, line_start, line_end)
+                    start_pos = line_end
 
     def copy_to_clipboard(self, text_widget):
         """Copy the content of a text widget to the clipboard."""
@@ -672,7 +771,7 @@ class QMIParserGUI:
 
     def setup_status_bar(self, parent):
         """상태바 설정"""
-        status_frame = ttk.Frame(parent, padding=(0, 10))
+        status_frame = ttk.Frame(parent, padding=(0, 2))
         status_frame.pack(fill=tk.X)
         status_frame.grid_columnconfigure(0, weight=1)
 
@@ -753,9 +852,14 @@ class QMIParserGUI:
         self.log("🧹 Raw input cleared.")
 
     def clear_output(self):
-        self.combined_text.delete('1.0', tk.END)
-        self.parsed_only_text.delete('1.0', tk.END)
+        for text_widget in self.original_texts:
+            text_widget.config(state=tk.NORMAL)
+            text_widget.delete('1.0', tk.END)
+            text_widget.config(state=tk.DISABLED)
+        self.original_texts.clear()
+        self.log_text.config(state=tk.NORMAL)
         self.log_text.delete('1.0', tk.END)
+        self.log_text.config(state=tk.DISABLED)
         self.update_status("🧹 Output cleared.", "info")
 
     def clear_all(self):
@@ -801,20 +905,34 @@ class QMIParserGUI:
     def show_result(self, results):
         try:
             if isinstance(results, dict):
+                # Clear previous results and original text cache
+                self.clear_output()
+
+                tag_map = {
+                    "timestamp_highlight": ["timestamp"],
+                    "highlight": ["QmiType", "IFType", "QmiLength", "QmiCtlFlags"],
+                    "separator": ["--------------------------------------------------"]
+                }
+
                 combined_content = results.get('combined', '')
-                self.combined_text.delete('1.0', tk.END)
+                self.combined_text.config(state=tk.NORMAL)
                 if combined_content:
                     self.combined_text.insert('1.0', combined_content)
+                    self.original_texts[self.combined_text] = combined_content
                     self.log(f"📄 Combined result: {len(combined_content)} chars.")
+                    self.highlight_text(self.combined_text, tag_map)
+                self.combined_text.config(state=tk.DISABLED)
 
                 parsed_only_content = results.get('parsed_only', '')
-                self.parsed_only_text.delete('1.0', tk.END)
+                self.parsed_only_text.config(state=tk.NORMAL)
                 if parsed_only_content:
                     self.parsed_only_text.insert('1.0', parsed_only_content)
+                    self.original_texts[self.parsed_only_text] = parsed_only_content
                     self.log(f"🔍 Parsed result: {len(parsed_only_content)} chars.")
+                    self.highlight_text(self.parsed_only_text, tag_map)
                 else:
                     self.parsed_only_text.insert('1.0', "No QMI packets found to parse.\n\nCheck if the input contains valid QMI log entries.")
-                    self.log("⚠️ No parsed content.")
+                self.parsed_only_text.config(state=tk.DISABLED)
 
                 if 'stats' in results:
                     stats = results['stats']
@@ -827,30 +945,27 @@ class QMIParserGUI:
                     self.output_notebook.select(0)
                     self.log("🎯 Switched to 'Combined' tab.")
             else: # Fallback for old string format
-                self.combined_text.delete('1.0', tk.END)
-                self.combined_text.insert('1.0', str(results))
-                self.parsed_only_text.delete('1.0', tk.END)
-                self.parsed_only_text.insert('1.0', "Result is in a legacy format.")
-                self.output_notebook.select(0)
+                self.show_result({'combined': str(results), 'parsed_only': "Result is in a legacy format.", 'stats': {}})
+
         except Exception as e:
             self.log(f"❌ Error displaying results: {e}")
             print(f"show_result error: {e}")
 
     def save_results(self):
         try:
-            current_tab = self.output_notebook.index(self.output_notebook.select())
+            current_tab_index = self.output_notebook.index(self.output_notebook.select())
             text_widgets = [self.combined_text, self.parsed_only_text, self.log_text]
             default_names = ["qmi_combined.txt", "qmi_parsed.txt", "qmi_log.txt"]
             titles = ["Save Combined Result", "Save Parsed Result", "Save Log"]
 
-            content = text_widgets[current_tab].get('1.0', tk.END).strip()
+            content = text_widgets[current_tab_index].get('1.0', tk.END).strip()
             if not content:
                 self.update_status("Nothing to save.", "warning")
                 return
 
             file_path = filedialog.asksaveasfilename(
-                title=titles[current_tab],
-                initialfile=default_names[current_tab],
+                title=titles[current_tab_index],
+                initialfile=default_names[current_tab_index],
                 defaultextension=".txt",
                 filetypes=[("Text Files", "*.txt"), ("All Files", "*.*")]
             )
@@ -972,6 +1087,29 @@ class QMIParserGUI:
             self.root.after(0, self.unlock_ui)
             self.root.after(0, self.progress_var.set, 0)
 
+    def load_config(self):
+        try:
+            if os.path.exists(CONFIG_FILE):
+                with open(CONFIG_FILE, 'r') as f:
+                    config = json.load(f)
+                    self.regex_var.set(config.get("use_regex", True))
+            else:
+                self.regex_var.set(True)
+        except (IOError, json.JSONDecodeError) as e:
+            print(f"Error loading config: {e}")
+            self.regex_var.set(True)
+
+    def save_config(self):
+        try:
+            config = {"use_regex": self.regex_var.get()}
+            with open(CONFIG_FILE, 'w') as f:
+                json.dump(config, f, indent=4)
+        except IOError as e:
+            print(f"Error saving config: {e}")
+
+    def on_closing(self):
+        self.save_config()
+        self.root.destroy()
 
 if __name__ == '__main__':
     try:
