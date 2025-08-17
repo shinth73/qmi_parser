@@ -1,0 +1,16 @@
+[project]
+name = "qmi-parser"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "pyinstaller>=6.15.0",
+    "pywin32",
+    "tkinterdnd2",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pyinstaller",
+]
