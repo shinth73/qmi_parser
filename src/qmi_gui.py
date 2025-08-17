@@ -17,9 +17,9 @@ MAX_BUFFER_BYTES_PER_LINE = 32
 MAX_OUTPUT_BUF_SIZE = ((MAX_BUFFER_BYTES_PER_LINE * 3) + 2)
 
 
-def process_qmi_packet(qcat_app, combined_fh, parsed_only_fh, log_packet):
+def process_qmi_packet(qcat_app, combined_fh, parsed_only_fh, log_packet, log_timestamp=""):
     """
-    원본 QMI.py의 process_qmi_packet 함수와 동일
+    원본 QMI.py의 process_qmi_packet 함수와 동일. 타임스탬프 교체 기능 추가.
     """
     byte_strings = [s for s in log_packet.split() if s]
     if not byte_strings:
@@ -48,12 +48,30 @@ def process_qmi_packet(qcat_app, combined_fh, parsed_only_fh, log_packet):
     if parsed_object is None:
         print(f"QCAT failed to process a packet. Error: {qcat_app.LastError}")
     else:
-        # The regex replaces QCAT's detailed timestamp and header with a simple confirmation.
-        parsed_text = re.sub(
-            r' ([0-9]{2}):([0-9]{2}):([0-9]{2}\.[0-9]{1,9})\s+\[.{2,8}\]\s+(0x....)  QMI Link 1 TX PDU',
-            'builded. Parsed by QCAT',
-            parsed_object.Text
-        )
+        parsed_text = parsed_object.Text
+        # log_timestamp가 있으면 QCAT 헤더를 타임스탬프로 교체 시도
+        if log_timestamp:
+            # QCAT header format: 2013 Feb  5 10:20:30.123 [AB] 0x1234  QMI Link 1 TX PDU
+            qcat_header_pattern = r'\d{4}\s+\w{3}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2}\.\d+\s+\[.{2,8}\]\s+0x....\s+QMI Link 1 TX PDU'
+            replacement = f"""--------------------------------------------------\n{log_timestamp}"""
+            new_text, count = re.subn(qcat_header_pattern, replacement, parsed_text, count=1)
+            if count > 0:
+                parsed_text = new_text
+            else:
+                # 패턴이 일치하지 않으면 기존 방식으로 대체
+                replacement_fallback = f"""--------------------------------------------------\n{log_timestamp} builded. Parsed by QCAT"""
+                parsed_text = re.sub(
+                    r' (\d{2}):(\d{2}):(\d{2}\.\d{1,9})\s+.\[.{2,8}\]\s+(0x....)  QMI Link 1 TX PDU',
+                    replacement_fallback,
+                    parsed_text
+                )
+        else:
+            # 타임스탬프가 없으면 기존 방식으로 동작
+            parsed_text = re.sub(
+                r' ([0-9]{2}):([0-9]{2}):([0-9]{2}\.[0-9]{1,9})\s+\[.{2,8}\]\s+(0x....)  QMI Link 1 TX PDU',
+                'builded. Parsed by QCAT',
+                parsed_text
+            )
 
         if parsed_text and parsed_text.strip():
             for line in parsed_text.splitlines():
@@ -90,6 +108,7 @@ class QMILogProcessor:
             qmi_packet_accum_length = 0
             qmi_packet_expected_length = 0
             is_accumulating = False
+            log_timestamp = ""
             line_count = 0
             processed_packets = 0
 
@@ -114,6 +133,11 @@ class QMILogProcessor:
                 is_data_line = re.search(r'RIL-RAWDATA..[0-9,A-F]{2} ', txt_line)
 
                 if is_data_line:
+                    if not is_accumulating:
+                        try:
+                            log_timestamp = " ".join(txt_line.split()[:2])
+                        except IndexError:
+                            log_timestamp = ""
                     is_accumulating = True
                     split_data = txt_line.split(':')
                     if len(split_data) > 1:
@@ -133,31 +157,33 @@ class QMILogProcessor:
                                 progress_callback(f"경고: 16진수 문자열 디코딩 실패: {txt_line.strip()}", None)
 
                 elif is_accumulating:
-                    process_qmi_packet(self.qcat_app, combined_output, parsed_only_output, log_packet)
+                    process_qmi_packet(self.qcat_app, combined_output, parsed_only_output, log_packet, log_timestamp)
                     processed_packets += 1
                     # Reset state
                     log_packet = LOG_PACKET_DEFAULT
                     qmi_packet_accum_length = 0
                     qmi_packet_expected_length = 0
                     is_accumulating = False
+                    log_timestamp = ""
 
                 if is_accumulating and (
                         (qmi_packet_expected_length > 0 and qmi_packet_accum_length >= qmi_packet_expected_length) or
                         (qmi_packet_accum_length >= MAX_OUTPUT_BUF_SIZE)
                 ):
-                    process_qmi_packet(self.qcat_app, combined_output, parsed_only_output, log_packet)
+                    process_qmi_packet(self.qcat_app, combined_output, parsed_only_output, log_packet, log_timestamp)
                     processed_packets += 1
                     # Reset state
                     log_packet = LOG_PACKET_DEFAULT
                     qmi_packet_accum_length = 0
                     qmi_packet_expected_length = 0
                     is_accumulating = False
+                    log_timestamp = ""
 
             # 마지막 패킷 처리
             if is_accumulating:
                 if progress_callback:
                     progress_callback("텍스트 끝 도달, 마지막 누적 패킷 처리 중...", None)
-                process_qmi_packet(self.qcat_app, combined_output, parsed_only_output, log_packet)
+                process_qmi_packet(self.qcat_app, combined_output, parsed_only_output, log_packet, log_timestamp)
                 processed_packets += 1
 
             if progress_callback:
@@ -206,6 +232,7 @@ class QMILogProcessor:
                 qmi_packet_accum_length = 0
                 qmi_packet_expected_length = 0
                 is_accumulating = False
+                log_timestamp = ""
                 line_count = 0
                 processed_packets = 0
 
@@ -242,6 +269,11 @@ class QMILogProcessor:
                     is_data_line = re.search(r'RIL-RAWDATA..[0-9,A-F]{2} ', txt_line)
 
                     if is_data_line:
+                        if not is_accumulating:
+                            try:
+                                log_timestamp = " ".join(txt_line.split()[:2])
+                            except IndexError:
+                                log_timestamp = ""
                         is_accumulating = True
                         split_data = txt_line.split(':')
                         if len(split_data) > 1:
@@ -261,32 +293,34 @@ class QMILogProcessor:
                                     progress_callback(f"경고: 16진수 문자열 디코딩 실패: {txt_line.strip()}", None)
 
                     elif is_accumulating:
-                        process_qmi_packet(self.qcat_app, combined_fh, parsed_only_fh, log_packet)
+                        process_qmi_packet(self.qcat_app, combined_fh, parsed_only_fh, log_packet, log_timestamp)
                         processed_packets += 1
                         # 상태 초기화
                         log_packet = LOG_PACKET_DEFAULT
                         qmi_packet_accum_length = 0
                         qmi_packet_expected_length = 0
                         is_accumulating = False
+                        log_timestamp = ""
 
                     if is_accumulating and (
                             (
                                     qmi_packet_expected_length > 0 and qmi_packet_accum_length >= qmi_packet_expected_length) or
                             (qmi_packet_accum_length >= MAX_OUTPUT_BUF_SIZE)
                     ):
-                        process_qmi_packet(self.qcat_app, combined_fh, parsed_only_fh, log_packet)
+                        process_qmi_packet(self.qcat_app, combined_fh, parsed_only_fh, log_packet, log_timestamp)
                         processed_packets += 1
                         # 상태 초기화
                         log_packet = LOG_PACKET_DEFAULT
                         qmi_packet_accum_length = 0
                         qmi_packet_expected_length = 0
                         is_accumulating = False
+                        log_timestamp = ""
 
                 # 마지막 패킷 처리
                 if is_accumulating:
                     if progress_callback:
                         progress_callback("파일 끝 도달, 마지막 누적 패킷 처리 중...", None)
-                    process_qmi_packet(self.qcat_app, combined_fh, parsed_only_fh, log_packet)
+                    process_qmi_packet(self.qcat_app, combined_fh, parsed_only_fh, log_packet, log_timestamp)
                     processed_packets += 1
 
                 if progress_callback:
@@ -311,7 +345,7 @@ class QMILogProcessor:
 class QMIParserGUI:
     def __init__(self, root):
         self.root = root
-        self.root.title("QMI 로그 파서 v1.2")
+        self.root.title("QMI Parser")
         self.root.geometry("1200x800")
         self.root.minsize(1000, 700)
 
@@ -397,14 +431,14 @@ class QMIParserGUI:
         header_frame = ttk.Frame(parent)
         header_frame.pack(fill=tk.X, pady=(0, 10))
 
-        title_label = ttk.Label(header_frame, text="QMI 로그 파서", style='Title.TLabel')
+        title_label = ttk.Label(header_frame, text="QMI Parser", style='Title.TLabel')
         title_label.pack(side=tk.LEFT)
 
-        subtitle_label = ttk.Label(header_frame, text="QCAT 기반 QMI 로그 분석 도구", style='Subtitle.TLabel')
-        subtitle_label.pack(side=tk.LEFT, padx=(10, 0))
+        # subtitle_label = ttk.Label(header_frame, text="QCAT 기반 QMI 로그 분석 도구", style='Subtitle.TLabel')
+        # subtitle_label.pack(side=tk.LEFT, padx=(10, 0))
 
         # 버전 정보
-        version_label = ttk.Label(header_frame, text="v1.2", style='Subtitle.TLabel')
+        version_label = ttk.Label(header_frame, text="v1.0", style='Subtitle.TLabel')
         version_label.pack(side=tk.RIGHT)
 
     def setup_left_panel(self, parent):
@@ -899,7 +933,7 @@ class QMIParserGUI:
 
             file_path = filedialog.asksaveasfilename(
                 title=title,
-                initialname=default_name,
+                initialfile=default_name,
                 defaultextension=".txt",
                 filetypes=[
                     ("텍스트 파일", "*.txt"),
@@ -1009,8 +1043,8 @@ class QMIParserGUI:
                 self.root.after(0, lambda: self.update_status("✅ 파일 처리 완료!", "success"))
                 self.root.after(0, lambda: messagebox.showinfo(
                     "완료",
-                    f"QMI 로그 파싱이 완료되었습니다!\n\n"
-                    f"출력 파일:\n- {os.path.basename(combined_path)}\n"
+                    f"QMI 로그 파싱이 완료되었습니다!\n\n" 
+                    f"출력 파일:\n- {os.path.basename(combined_path)}\n" 
                     f"- {os.path.basename(parsed_only_path)}\n\n"
                     f"폴더: {os.path.dirname(combined_path)}"
                 ))
@@ -1082,3 +1116,7 @@ class QMIParserGUI:
             self.root.after(0, lambda: self.progress_var.set(0))
 
 
+if __name__ == '__main__':
+    root = tk.Tk()
+    app = QMIParserGUI(root)
+    root.mainloop()

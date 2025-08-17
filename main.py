@@ -6,13 +6,7 @@ import sys
 import os
 import tkinter as tk
 
-# src 폴더를 Python 경로에 추가
-current_dir = os.path.dirname(os.path.abspath(__file__))
-src_path = os.path.join(current_dir, 'src')
-if src_path not in sys.path:
-    sys.path.insert(0, src_path)
-
-from qmi_gui import QMIParserGUI
+from src.qmi_gui import QMIParserGUI
 
 
 def main():
