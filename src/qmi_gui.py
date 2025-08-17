@@ -1066,18 +1066,7 @@ class QMIParserGUI:
             result = self.processor.process_qmi_text(raw_data, progress_callback=progress_callback)
 
             if not self.cancel_processing:
-                # 결과 표시
-                combined_result = result['combined']
-                parsed_only_result = result['parsed_only']
-                stats = result['stats']
-
-                result_text = f"=== 📊 처리 통계 ===\n"
-                result_text += f"처리된 라인: {stats['lines']:,}\n"
-                result_text += f"처리된 패킷: {stats['packets']:,}\n\n"
-                result_text += f"=== 📄 통합 결과 (Combined) ===\n{combined_result}\n"
-                result_text += f"=== 🔍 파싱 결과만 (Parsed Only) ===\n{parsed_only_result}"
-
-                self.root.after(0, lambda: self.show_result(result_text))
+                self.root.after(0, lambda: self.show_result(result))
                 self.root.after(0, lambda: self.log("✅ 텍스트 처리가 완료되었습니다!"))
                 self.root.after(0, lambda: self.update_status("✅ 텍스트 처리 완료!", "success"))
 

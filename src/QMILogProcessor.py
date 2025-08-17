@@ -300,7 +300,7 @@ class QMILogProcessor:
 class QMIParserGUI:
     def __init__(self, root):
         self.root = root
-        self.root.title("QMI 로그 파서")
+        self.root.title("QMI Log Parser")
         self.root.geometry("1000x700")
         self.root.minsize(800, 600)
 
