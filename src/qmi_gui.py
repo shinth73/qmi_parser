@@ -61,14 +61,14 @@ def process_qmi_packet(qcat_app, combined_fh, parsed_only_fh, log_packet, log_ti
                 # 패턴이 일치하지 않으면 기존 방식으로 대체
                 replacement_fallback = f"""--------------------------------------------------\n{log_timestamp} builded. Parsed by QCAT"""
                 parsed_text = re.sub(
-                    r' (\d{2}):(\d{2}):(\d{2}\.\d{1,9})\s+.\[.{2,8}\]\s+(0x....)  QMI Link 1 TX PDU',
+                    r' ([0-9]{2}):([0-9]{2}):([0-9]{2}\.[0-9]{1,9})\s+[[.]{{2,8}}]\]\s+(0x....)  QMI Link 1 TX PDU',
                     replacement_fallback,
                     parsed_text
                 )
         else:
             # 타임스탬프가 없으면 기존 방식으로 동작
             parsed_text = re.sub(
-                r' ([0-9]{2}):([0-9]{2}):([0-9]{2}\.[0-9]{1,9})\s+\[.{2,8}\]\s+(0x....)  QMI Link 1 TX PDU',
+                r' ([0-9]{2}):([0-9]{2}):([0-9]{2}\.[0-9]{1,9})\s+[[.]{{2,8}}]\]\s+(0x....)  QMI Link 1 TX PDU',
                 'builded. Parsed by QCAT',
                 parsed_text
             )
@@ -345,9 +345,31 @@ class QMILogProcessor:
 class QMIParserGUI:
     def __init__(self, root):
         self.root = root
-        self.root.title("QMI Parser")
-        self.root.geometry("1200x800")
+        self.root.title("QMI Log Parser v1.3")
+        self.root.geometry("1280x800")
         self.root.minsize(1000, 700)
+
+        # --- 색상 및 폰트 정의 ---
+        self.colors = {
+            "bg": "#282c34",
+            "bg_light": "#3e4451",
+            "bg_dark": "#21252b",
+            "fg": "#abb2bf",
+            "primary": "#61afef",
+            "secondary": "#98c379",
+            "danger": "#e06c75",
+            "warning": "#e5c07b",
+            "info": "#56b6c2",
+        }
+        self.fonts = {
+            "title": ("맑은 고딕", 16, "bold"),
+            "header": ("맑은 고딕", 11, "bold"),
+            "body": ("맑은 고딕", 10),
+            "button": ("맑은 고딕", 10, "bold"),
+            "monospace": ("Consolas", 10),
+        }
+        
+        self.root.configure(bg=self.colors["bg"])
 
         # 아이콘 설정 시도
         try:
@@ -371,51 +393,104 @@ class QMIParserGUI:
     def setup_styles(self):
         """UI 스타일 설정"""
         style = ttk.Style()
+        style.theme_use('clam')
 
-        # 테마 설정
-        try:
-            style.theme_use('clam')  # 더 현대적인 테마
-        except:
-            pass
+        # --- 기본 스타일 ---
+        style.configure('.', 
+                        background=self.colors["bg"], 
+                        foreground=self.colors["fg"],
+                        font=self.fonts["body"])
+        style.configure('TFrame', background=self.colors["bg"])
+        
+        # --- 제목 ---
+        style.configure('Title.TLabel', 
+                        font=self.fonts["title"], 
+                        foreground=self.colors["primary"],
+                        background=self.colors["bg"])
+        style.configure('Subtitle.TLabel', 
+                        font=self.fonts["body"], 
+                        foreground=self.colors["fg"],
+                        background=self.colors["bg"])
 
-        # 커스텀 스타일 정의
-        style.configure('Title.TLabel', font=('맑은 고딕', 12, 'bold'), foreground='#2c3e50')
-        style.configure('Subtitle.TLabel', font=('맑은 고딕', 10), foreground='#34495e')
-        style.configure('Success.TLabel', font=('맑은 고딕', 9), foreground='#27ae60')
-        style.configure('Error.TLabel', font=('맑은 고딕', 9), foreground='#e74c3c')
-        style.configure('Warning.TLabel', font=('맑은 고딕', 9), foreground='#f39c12')
+        # --- 버튼 ---
+        style.configure('TButton', 
+                        font=self.fonts["button"],
+                        padding=(10, 5),
+                        borderwidth=0,
+                        relief="flat")
+        style.map('TButton',
+                  background=[('active', self.colors["bg_light"]), ('!disabled', self.colors["bg_dark"])],
+                  foreground=[('!disabled', self.colors["primary"])])
 
-        # 프로그레스 바 스타일
+        style.configure('Primary.TButton', foreground=self.colors["secondary"])
+        style.map('Primary.TButton', foreground=[('!disabled', self.colors["secondary"])])
+        
+        style.configure('Danger.TButton', foreground=self.colors["danger"])
+        style.map('Danger.TButton', foreground=[('!disabled', self.colors["danger"])] )
+
+        # --- 레이블 프레임 ---
+        style.configure('TLabelframe', 
+                        font=self.fonts["header"],
+                        padding=(15, 10),
+                        background=self.colors["bg"],
+                        foreground=self.colors["fg"],
+                        relief="solid",
+                        borderwidth=1)
+        style.configure('TLabelframe.Label', 
+                        font=self.fonts["header"],
+                        foreground=self.colors["primary"],
+                        background=self.colors["bg"])
+
+        # --- 노트북 (탭) ---
+        style.configure('TNotebook', 
+                        background=self.colors["bg"],
+                        borderwidth=0)
+        style.configure('TNotebook.Tab', 
+                        font=self.fonts["button"],
+                        padding=(10, 5),
+                        background=self.colors["bg_dark"],
+                        foreground=self.colors["fg"],
+                        borderwidth=0)
+        style.map('TNotebook.Tab',
+                  background=[('selected', self.colors["primary"]), ('active', self.colors["bg_light"])],
+                  foreground=[('selected', self.colors["bg_dark"]), ('active', self.colors["primary"])])
+
+        # --- 프로그레스 바 ---
         style.configure('Custom.Horizontal.TProgressbar',
-                       troughcolor='#ecf0f1',
-                       background='#3498db',
-                       borderwidth=1,
-                       lightcolor='#3498db',
-                       darkcolor='#2980b9')
-
-        # 버튼 스타일
-        style.configure('Action.TButton', font=('맑은 고딕', 9, 'bold'))
-        style.configure('Danger.TButton', font=('맑은 고딕', 9))
+                       troughcolor=self.colors["bg_dark"],
+                       background=self.colors["primary"],
+                       borderwidth=0)
+        
+        # --- 상태 라벨 ---
+        style.configure('Status.TLabel', font=self.fonts["body"], background=self.colors["bg"])
+        style.configure('Success.Status.TLabel', foreground=self.colors["secondary"])
+        style.configure('Error.Status.TLabel', foreground=self.colors["danger"])
+        style.configure('Warning.Status.TLabel', foreground=self.colors["warning"])
 
     def setup_ui(self):
         # 메인 컨테이너
-        main_container = ttk.Frame(self.root)
-        main_container.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        main_container = ttk.Frame(self.root, padding=20)
+        main_container.pack(fill=tk.BOTH, expand=True)
 
         # 헤더
         self.setup_header(main_container)
 
         # 메인 콘텐츠 영역
         content_paned = ttk.PanedWindow(main_container, orient=tk.HORIZONTAL)
-        content_paned.pack(fill=tk.BOTH, expand=True, pady=(10, 0))
+        content_paned.pack(fill=tk.BOTH, expand=True, pady=20)
 
         # 좌측 패널 (파일 처리와 텍스트 입력)
-        left_panel = ttk.Frame(content_paned)
+        left_panel = ttk.Frame(content_paned, padding=5)
         content_paned.add(left_panel, weight=2)
 
         # 우측 패널 (출력)
-        right_panel = ttk.Frame(content_paned)
+        right_panel = ttk.Frame(content_paned, padding=5)
         content_paned.add(right_panel, weight=3)
+
+        # 좌우 패널 구분선
+        s = ttk.Separator(content_paned, orient=tk.VERTICAL)
+        content_paned.add(s)
+
 
         # 좌측 패널 구성
         self.setup_left_panel(left_panel)
@@ -431,213 +506,189 @@ class QMIParserGUI:
         header_frame = ttk.Frame(parent)
         header_frame.pack(fill=tk.X, pady=(0, 10))
 
-        title_label = ttk.Label(header_frame, text="QMI Parser", style='Title.TLabel')
+        title_label = ttk.Label(header_frame, text="QMI Log Parser", style='Title.TLabel')
         title_label.pack(side=tk.LEFT)
 
-        # subtitle_label = ttk.Label(header_frame, text="QCAT 기반 QMI 로그 분석 도구", style='Subtitle.TLabel')
-        # subtitle_label.pack(side=tk.LEFT, padx=(10, 0))
-
-        # 버전 정보
-        version_label = ttk.Label(header_frame, text="v1.0", style='Subtitle.TLabel')
-        version_label.pack(side=tk.RIGHT)
+        version_label = ttk.Label(header_frame, text="v1.3", style='Subtitle.TLabel')
+        version_label.pack(side=tk.RIGHT, anchor=tk.S)
 
     def setup_left_panel(self, parent):
         """좌측 패널 설정 - 파일 처리와 텍스트 입력"""
+        parent.grid_columnconfigure(0, weight=1)
+        parent.grid_rowconfigure(1, weight=1)
 
         # 파일 처리 섹션
-        file_section = ttk.LabelFrame(parent, text="📁 파일 처리", padding=15)
-        file_section.pack(fill=tk.X, pady=(0, 10))
+        file_section = ttk.LabelFrame(parent, text="File Processing")
+        file_section.grid(row=0, column=0, sticky="ew", pady=(0, 20))
+        file_section.grid_columnconfigure(1, weight=1)
 
-        # 드래그 앤 드롭 영역 (relief를 'solid'로 변경)
-        self.drop_frame = tk.Frame(file_section, bg='#ecf0f1', relief='solid', bd=2)
-        self.drop_frame.pack(fill=tk.X, pady=(0, 10), ipady=20)
+        # 드래그 앤 드롭 영역
+        self.drop_frame = tk.Frame(file_section, bg=self.colors["bg_dark"], relief='solid', bd=1)
+        self.drop_frame.grid(row=0, column=0, columnspan=2, sticky="ew", pady=10, ipady=20)
 
         self.drop_label = tk.Label(self.drop_frame,
-                                   text="📂 QMI 로그 파일을 여기에 드래그하거나\n아래 버튼을 클릭하세요",
-                                   font=('맑은 고딕', 11),
-                                   fg='#7f8c8d',
-                                   bg='#ecf0f1')
-        self.drop_label.pack(expand=True)
+                                   text="Drag & Drop QMI Log File Here\nor Click to Browse",
+                                   font=self.fonts["body"],
+                                   fg=self.colors["fg"],
+                                   bg=self.colors["bg_dark"])
+        self.drop_label.pack(expand=True, padx=20, pady=20)
 
         # 파일 선택 버튼과 경로 표시
-        file_controls = ttk.Frame(file_section)
-        file_controls.pack(fill=tk.X, pady=(0, 10))
-
-        self.browse_button = ttk.Button(file_controls, text="📁 파일 선택",
-                                        command=self.browse_file, style='Action.TButton')
-        self.browse_button.pack(side=tk.LEFT)
+        self.browse_button = ttk.Button(file_section, text="Browse File",
+                                        command=self.browse_file)
+        self.browse_button.grid(row=1, column=0, pady=(0, 10), padx=(0, 10))
 
         self.file_path_var = tk.StringVar()
-        self.file_label = ttk.Label(file_controls, textvariable=self.file_path_var,
-                                    foreground='#2980b9', font=('맑은 고딕', 9))
-        self.file_label.pack(side=tk.LEFT, padx=(10, 0), fill=tk.X, expand=True)
+        self.file_label = ttk.Label(file_section, textvariable=self.file_path_var,
+                                    foreground=self.colors["info"], font=self.fonts["body"])
+        self.file_label.grid(row=1, column=1, sticky="ew", pady=(0, 10))
 
         # 파일 처리 버튼
         button_frame = ttk.Frame(file_section)
-        button_frame.pack(fill=tk.X)
+        button_frame.grid(row=2, column=0, columnspan=2, sticky="w")
 
-        self.process_file_button = ttk.Button(button_frame, text="⚡ 파일 파싱 시작",
+        self.process_file_button = ttk.Button(button_frame, text="Parse File",
                                               command=self.start_file_processing,
-                                              state='disabled', style='Action.TButton')
+                                              state='disabled', style='Primary.TButton')
         self.process_file_button.pack(side=tk.LEFT)
 
-        self.cancel_button = ttk.Button(button_frame, text="❌ 취소",
+        self.cancel_button = ttk.Button(button_frame, text="Cancel",
                                         command=self.cancel_processing_action,
                                         state='disabled', style='Danger.TButton')
-        self.cancel_button.pack(side=tk.LEFT, padx=(10, 0))
+        self.cancel_button.pack(side=tk.LEFT, padx=10)
 
         # 텍스트 입력 섹션
-        text_section = ttk.LabelFrame(parent, text="📝 텍스트 로그 직접 입력", padding=15)
-        text_section.pack(fill=tk.BOTH, expand=True)
-
-        # 텍스트 입력 안내
-        ttk.Label(text_section, text="QMI 로그 텍스트를 직접 입력하세요:",
-                  style='Subtitle.TLabel').pack(anchor=tk.W, pady=(0, 5))
+        text_section = ttk.LabelFrame(parent, text="Raw Text Input")
+        text_section.grid(row=1, column=0, sticky="nsew")
+        text_section.grid_rowconfigure(0, weight=1)
+        text_section.grid_columnconfigure(0, weight=1)
 
         # 텍스트 입력창
-        text_input_frame = ttk.Frame(text_section)
-        text_input_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
-
-        self.raw_input = tk.Text(text_input_frame, height=8, wrap=tk.WORD,
-                                 font=('Consolas', 9), bg='#fafafa')
-        text_scrollbar = ttk.Scrollbar(text_input_frame, orient="vertical",
+        self.raw_input = tk.Text(text_section, height=8, wrap=tk.WORD,
+                                 font=self.fonts["monospace"],
+                                 bg=self.colors["bg_dark"],
+                                 fg=self.colors["fg"],
+                                 relief="flat",
+                                 insertbackground=self.colors["primary"],
+                                 selectbackground=self.colors["bg_light"],
+                                 selectforeground=self.colors["fg"])
+        text_scrollbar = ttk.Scrollbar(text_section, orient="vertical",
                                        command=self.raw_input.yview)
         self.raw_input.configure(yscrollcommand=text_scrollbar.set)
-
-        self.raw_input.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
-        text_scrollbar.grid(row=0, column=1, sticky=(tk.N, tk.S))
-
-        text_input_frame.grid_columnconfigure(0, weight=1)
-        text_input_frame.grid_rowconfigure(0, weight=1)
+        self.raw_input.grid(row=0, column=0, sticky="nsew", pady=5)
+        text_scrollbar.grid(row=0, column=1, sticky="ns")
 
         # 텍스트 처리 버튼
         text_button_frame = ttk.Frame(text_section)
-        text_button_frame.pack(fill=tk.X)
+        text_button_frame.grid(row=1, column=0, columnspan=2, sticky="w", pady=(10, 0))
 
-        self.process_text_button = ttk.Button(text_button_frame, text="⚡ 텍스트 파싱 시작",
+        self.process_text_button = ttk.Button(text_button_frame, text="Parse Text",
                                               command=self.process_raw_data,
-                                              style='Action.TButton')
+                                              style='Primary.TButton')
         self.process_text_button.pack(side=tk.LEFT)
+        
+        ttk.Button(text_button_frame, text="Sample Data",
+                   command=self.insert_sample_data).pack(side=tk.LEFT, padx=10)
 
-        # 샘플 데이터 삽입 버튼
-        ttk.Button(text_button_frame, text="📋 샘플 데이터",
-                   command=self.insert_sample_data,
-                   style='Info.TButton').pack(side=tk.LEFT, padx=(10, 0))
-
-        # 입력 클리어 버튼
-        ttk.Button(text_button_frame, text="🗑️ 입력 지우기",
-                   command=self.clear_raw_input,
-                   style='Secondary.TButton').pack(side=tk.RIGHT)
+        ttk.Button(text_button_frame, text="Clear Input",
+                   command=self.clear_raw_input).pack(side=tk.RIGHT)
 
     def setup_right_panel(self, parent):
         """우측 패널 설정 - 출력 결과"""
+        parent.grid_columnconfigure(0, weight=1)
+        parent.grid_rowconfigure(0, weight=1)
 
-        # 출력 섹션
-        output_section = ttk.LabelFrame(parent, text="📊 출력 결과", padding=15)
-        output_section.pack(fill=tk.BOTH, expand=True)
+        output_section = ttk.LabelFrame(parent, text="Output")
+        output_section.grid(row=0, column=0, sticky="nsew")
+        output_section.grid_columnconfigure(0, weight=1)
+        output_section.grid_rowconfigure(0, weight=1)
 
         # 노트북 (탭) 위젯
         self.output_notebook = ttk.Notebook(output_section)
-        self.output_notebook.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
+        self.output_notebook.pack(fill=tk.BOTH, expand=True, pady=5)
 
-        # 1. 통합 결과 탭 (원본 로그 + 파싱 결과)
-        combined_frame = ttk.Frame(self.output_notebook)
-        self.output_notebook.add(combined_frame, text="📄 통합 결과")
-
-        combined_text_frame = ttk.Frame(combined_frame)
-        combined_text_frame.pack(fill=tk.BOTH, expand=True)
-
-        self.combined_text = tk.Text(combined_text_frame, wrap=tk.WORD,
-                                     font=('Consolas', 9), bg='#fafafa')
-        combined_scrollbar = ttk.Scrollbar(combined_text_frame, orient="vertical",
-                                           command=self.combined_text.yview)
-        self.combined_text.configure(yscrollcommand=combined_scrollbar.set)
-
-        self.combined_text.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
-        combined_scrollbar.grid(row=0, column=1, sticky=(tk.N, tk.S))
-
-        combined_text_frame.grid_columnconfigure(0, weight=1)
-        combined_text_frame.grid_rowconfigure(0, weight=1)
-
-        # 2. 파싱 결과만 탭
-        parsed_frame = ttk.Frame(self.output_notebook)
-        self.output_notebook.add(parsed_frame, text="🔍 파싱 결과만")
-
-        parsed_text_frame = ttk.Frame(parsed_frame)
-        parsed_text_frame.pack(fill=tk.BOTH, expand=True)
-
-        self.parsed_only_text = tk.Text(parsed_text_frame, wrap=tk.WORD,
-                                        font=('Consolas', 9), bg='#fafafa')
-        parsed_scrollbar = ttk.Scrollbar(parsed_text_frame, orient="vertical",
-                                         command=self.parsed_only_text.yview)
-        self.parsed_only_text.configure(yscrollcommand=parsed_scrollbar.set)
-
-        self.parsed_only_text.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
-        parsed_scrollbar.grid(row=0, column=1, sticky=(tk.N, tk.S))
-
-        parsed_text_frame.grid_columnconfigure(0, weight=1)
-        parsed_text_frame.grid_rowconfigure(0, weight=1)
-
-        # 3. 처리 로그 탭
-        log_frame = ttk.Frame(self.output_notebook)
-        self.output_notebook.add(log_frame, text="📋 처리 로그")
-
-        log_text_frame = ttk.Frame(log_frame)
-        log_text_frame.pack(fill=tk.BOTH, expand=True)
-
-        self.log_text = tk.Text(log_text_frame, wrap=tk.WORD,
-                                font=('Consolas', 9), bg='#f8f9fa')
-        log_scrollbar = ttk.Scrollbar(log_text_frame, orient="vertical",
-                                      command=self.log_text.yview)
-        self.log_text.configure(yscrollcommand=log_scrollbar.set)
-
-        self.log_text.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
-        log_scrollbar.grid(row=0, column=1, sticky=(tk.N, tk.S))
-
-        log_text_frame.grid_columnconfigure(0, weight=1)
-        log_text_frame.grid_rowconfigure(0, weight=1)
+        # 탭 생성
+        self.combined_text = self.create_output_tab("Combined")
+        self.parsed_only_text = self.create_output_tab("Parsed Only")
+        self.log_text = self.create_output_tab("Log")
 
         # 출력 버튼들
         output_buttons = ttk.Frame(output_section)
-        output_buttons.pack(fill=tk.X)
+        output_buttons.pack(fill=tk.X, pady=(10, 0))
 
-        ttk.Button(output_buttons, text="💾 결과 저장",
+        ttk.Button(output_buttons, text="Save Results",
                    command=self.save_results,
-                   style='Success.TButton').pack(side=tk.LEFT)
+                   style='Primary.TButton').pack(side=tk.LEFT)
 
-        ttk.Button(output_buttons, text="🗑️ 출력 지우기",
-                   command=self.clear_output,
-                   style='Secondary.TButton').pack(side=tk.LEFT, padx=(10, 0))
+        ttk.Button(output_buttons, text="Clear Output",
+                   command=self.clear_output).pack(side=tk.LEFT, padx=10)
 
-        ttk.Button(output_buttons, text="🔄 전체 초기화",
+        ttk.Button(output_buttons, text="Reset All",
                    command=self.clear_all,
-                   style='Danger.TButton').pack(side=tk.LEFT, padx=(10, 0))
+                   style='Danger.TButton').pack(side=tk.RIGHT)
+
+    def create_output_tab(self, title):
+        """Helper to create a text widget tab"""
+        frame = ttk.Frame(self.output_notebook)
+        self.output_notebook.add(frame, text=title)
+        
+        frame.grid_rowconfigure(1, weight=1)
+        frame.grid_columnconfigure(0, weight=1)
+
+        button_frame = ttk.Frame(frame)
+        button_frame.grid(row=0, column=0, columnspan=2, sticky="ew")
+
+        copy_button = ttk.Button(button_frame, text="📋 Copy All", command=lambda: self.copy_to_clipboard(text_widget))
+        copy_button.pack(side=tk.RIGHT, pady=(0, 5))
+
+        text_widget = tk.Text(frame, wrap=tk.WORD,
+                              font=self.fonts["monospace"],
+                              bg=self.colors["bg_dark"],
+                              fg=self.colors["fg"],
+                              relief="flat",
+                              insertbackground=self.colors["primary"],
+                              selectbackground=self.colors["bg_light"],
+                              selectforeground=self.colors["fg"])
+        
+        scrollbar = ttk.Scrollbar(frame, orient="vertical", command=text_widget.yview)
+        text_widget.configure(yscrollcommand=scrollbar.set)
+        
+        text_widget.grid(row=1, column=0, sticky="nsew")
+        scrollbar.grid(row=1, column=1, sticky="ns")
+        
+        return text_widget
+
+    def copy_to_clipboard(self, text_widget):
+        """Copy the content of a text widget to the clipboard."""
+        content = text_widget.get("1.0", tk.END).strip()
+        if not content:
+            self.update_status("Nothing to copy.", "warning")
+            return
+        
+        self.root.clipboard_clear()
+        self.root.clipboard_append(content)
+        self.update_status("📋 Content copied to clipboard.", "success")
+        self.log("📋 Content copied to clipboard.")
 
     def setup_status_bar(self, parent):
         """상태바 설정"""
-        status_frame = ttk.Frame(parent)
-        status_frame.pack(fill=tk.X, pady=(10, 0))
-
-        # 구분선
-        ttk.Separator(status_frame, orient='horizontal').pack(fill=tk.X, pady=(0, 5))
-
-        status_content = ttk.Frame(status_frame)
-        status_content.pack(fill=tk.X)
+        status_frame = ttk.Frame(parent, padding=(0, 10))
+        status_frame.pack(fill=tk.X)
+        status_frame.grid_columnconfigure(0, weight=1)
 
         # 상태 라벨
         self.status_var = tk.StringVar()
-        self.status_var.set("🟢 준비 완료")
-        self.status_label = ttk.Label(status_content, textvariable=self.status_var,
-                                     style='Success.TLabel', font=('맑은 고딕', 9))
-        self.status_label.pack(side=tk.LEFT)
+        self.status_var.set("🟢 Ready")
+        self.status_label = ttk.Label(status_frame, textvariable=self.status_var, style='Status.TLabel')
+        self.status_label.grid(row=0, column=0, sticky="w")
 
         # 프로그레스 바
         self.progress_var = tk.DoubleVar()
-        self.progress_bar = ttk.Progressbar(status_content,
+        self.progress_bar = ttk.Progressbar(status_frame,
                                           variable=self.progress_var,
                                           maximum=100,
                                           style='Custom.Horizontal.TProgressbar')
-        self.progress_bar.pack(side=tk.RIGHT, padx=(10, 0), fill=tk.X, expand=True)
+        self.progress_bar.grid(row=0, column=1, sticky="ew", padx=20)
 
     def insert_sample_data(self):
         """샘플 QMI 로그 데이터를 입력창에 삽입"""
@@ -649,474 +700,285 @@ class QMIParserGUI:
 07-31 15:27:15.795 radio 10981 11042 D RILD    : RIL-RAWDATA: 00 C4 09 00 00 28 0D 00 03 22 0B 00 00 13 01 00 00 46 05 00 00 2A 04 00 03 00 00 00 2C 04 00 01 
 07-31 15:27:15.795 radio 10981 11042 D RILD    : RIL-RAWDATA: 00 00 00 2D 04 00 04 00 00 00 30 2C 00 00 04 22 0B 00 00 00 00 00 00 13 01 00 00 00 00 00 01 7B 
 07-31 15:27:15.795 radio 10981 11042 D RILD    : RIL-RAWDATA: 00 97 FF 64 FC 26 FD 00 00 46 05 00 00 00 00 00 00 80 0C 00 00 00 00 00 00 32 06 00 34 35 30 30 
-07-31 15:27:15.795 radio 10981 11042 D RILD    : RIL-RAWDATA: 35 FF """
+07-31 15:27:15.795 radio 10981 11042 D RILD    : RIL-RAWDATA: 35 FF"""
         self.raw_input.delete(1.0, tk.END)
         self.raw_input.insert(1.0, sample_data)
-        self.log("✅ 샘플 QMI 로그 데이터가 입력되었습니다.")
+        self.log("✅ Sample QMI log data inserted.")
 
     def setup_drag_drop(self):
         """드래그 앤 드롭 설정"""
-        # 드래그 앤 드롭 이벤트 바인딩
         self.drop_frame.bind('<Button-1>', self.on_drop_click)
         self.drop_label.bind('<Button-1>', self.on_drop_click)
-
-        # Windows에서 파일 드롭 지원
         try:
+            from tkinterdnd2 import DND_FILES
             self.root.drop_target_register(DND_FILES)
             self.root.dnd_bind('<<Drop>>', self.on_file_drop)
-        except:
-            # tkinterdnd2가 없는 경우 기본 기능만 사용
-            pass
+        except ImportError:
+            self.log("⚠️ tkinterdnd2 not found. Drag & drop is disabled.", show_time=False)
 
     def on_drop_click(self, event):
-        """드롭 영역 클릭 시 파일 브라우저 열기"""
         self.browse_file()
 
     def on_file_drop(self, event):
-        """파일 드롭 이벤트 처리"""
         if self.is_processing:
-            messagebox.showwarning("경고", "현재 처리 중입니다. 완료 후 다시 시도해주세요.")
+            messagebox.showwarning("Warning", "Processing is ongoing. Please wait.")
             return
-
-        files = event.data.split()
-        if files:
-            file_path = files[0].strip('{}')
-            self.set_file_path(file_path)
+        # In tkinterdnd2, event.data is a string of file paths
+        file_path = self.root.tk.splitlist(event.data)[0]
+        self.set_file_path(file_path)
 
     def browse_file(self):
-        """파일 브라우저 열기"""
         if self.is_processing:
-            messagebox.showwarning("경고", "현재 처리 중입니다. 완료 후 다시 시도해주세요.")
+            messagebox.showwarning("Warning", "Processing is ongoing. Please wait.")
             return
-
         file_path = filedialog.askopenfilename(
-            title="QMI 로그 파일 선택",
-            filetypes=[("텍스트 파일", "*.txt"), ("로그 파일", "*.log"), ("모든 파일", "*.*")]
+            title="Select QMI Log File",
+            filetypes=[("Log files", "*.txt *.log"), ("All files", "*.*")]
         )
         if file_path:
             self.set_file_path(file_path)
 
     def set_file_path(self, file_path):
-        """선택된 파일 경로 설정"""
         self.file_path = file_path
         filename = os.path.basename(file_path)
         self.file_path_var.set(filename)
         self.process_file_button.config(state='normal')
-
-        # 드롭 영역 스타일 변경
-        self.drop_frame.config(bg='#d5f4e6', relief='solid')
-        self.drop_label.config(
-            text=f"✅ 파일 선택됨\n{filename}",
-            fg='#27ae60',
-            bg='#d5f4e6'
-        )
-
-        self.update_status("📁 파일이 선택되었습니다 - 파싱 준비 완료", "success")
-        self.log(f"📁 파일 선택: {file_path}")
+        self.drop_label.config(text=f"✅ File Selected:\n{filename}", fg=self.colors["secondary"])
+        self.update_status(f"📁 File selected, ready to parse.", "success")
+        self.log(f"📁 File selected: {file_path}")
 
     def clear_raw_input(self):
-        """텍스트 입력창 클리어"""
-        if self.is_processing:
-            messagebox.showwarning("경고", "현재 처리 중입니다. 완료 후 다시 시도해주세요.")
-            return
-
+        if self.is_processing: return
         self.raw_input.delete(1.0, tk.END)
-        self.log("🧹 텍스트 입력창이 클리어되었습니다.")
+        self.log("🧹 Raw input cleared.")
 
     def clear_output(self):
-        """모든 출력 영역 초기화"""
-        try:
-            # 통합 결과 초기화
-            if hasattr(self, 'combined_text'):
-                self.combined_text.delete('1.0', tk.END)
-
-            # 파싱 결과만 초기화
-            if hasattr(self, 'parsed_only_text'):
-                self.parsed_only_text.delete('1.0', tk.END)
-
-            # 로그 초기화
-            if hasattr(self, 'log_text'):
-                self.log_text.delete('1.0', tk.END)
-
-            self.update_status("출력 영역이 초기화되었습니다.", "info")
-
-        except Exception as e:
-            print(f"출력 초기화 중 오류: {e}")
+        self.combined_text.delete('1.0', tk.END)
+        self.parsed_only_text.delete('1.0', tk.END)
+        self.log_text.delete('1.0', tk.END)
+        self.update_status("🧹 Output cleared.", "info")
 
     def clear_all(self):
-        """전체 초기화 - 모든 데이터와 UI 상태를 초기화"""
-        try:
-            # 진행 중인 작업이 있으면 중단
-            if self.is_processing:
-                self.cancel_processing_action()
-                # 잠시 대기하여 작업 완전 중단
-                self.root.after(100, self._complete_clear_all)
-                return
-
-            self._complete_clear_all()
-
-        except Exception as e:
-            print(f"전체 초기화 중 오류 발생: {e}")
-            # 강제로라도 기본 초기화 수행
-            self._force_clear_all()
+        if self.is_processing:
+            self.cancel_processing_action()
+            self.root.after(100, self._complete_clear_all)
+            return
+        self._complete_clear_all()
 
     def _complete_clear_all(self):
-        """전체 초기화 완료"""
-        try:
-            # 1. 파일 경로 초기화
-            self.file_path = None
-            self.file_path_var.set("")
-
-            # 2. 모든 출력 영역 초기화
-            self.clear_output()
-
-            # 3. 텍스트 입력 초기화
-            self.clear_raw_input()
-
-            # 4. UI 상태 초기화
-            self.unlock_ui()
-
-            # 5. 버튼 상태 초기화
-            self.process_file_button.config(state='disabled')
-            self.process_text_button.config(state='normal')
-            self.cancel_button.config(state='disabled')
-
-            # 6. 드래그 앤 드롭 영역 초기화
-            if hasattr(self, 'drop_frame') and hasattr(self, 'drop_label'):
-                self.drop_frame.config(bg='#ecf0f1')
-                self.drop_label.config(fg='#7f8c8d', bg='#ecf0f1')
-
-            # 7. 프로그레스바 초기화
-            if hasattr(self, 'progress_var'):
-                self.progress_var.set(0)
-
-            # 8. 첫 번째 탭으로 이동
-            if hasattr(self, 'output_notebook'):
-                self.output_notebook.select(0)
-
-            # 9. 상태 메시지 초기화
-            self.update_status("전체 초기화 완료", "success")
-
-            # 10. 로그 메시지
-            self.log("🔄 전체 초기화가 완료되었습니다.")
-
-        except Exception as e:
-            print(f"완전 초기화 중 오류: {e}")
-            self._force_clear_all()
-
-    def _force_clear_all(self):
-        """강제 초기화 - 오류 발생 시 최소한의 초기화"""
-        try:
-            self.file_path = None
-            if hasattr(self, 'file_path_var'):
-                self.file_path_var.set("")
-            if hasattr(self, 'raw_input'):
-                self.raw_input.delete('1.0', tk.END)
-            if hasattr(self, 'result_text'):
-                self.result_text.delete('1.0', tk.END)
-            if hasattr(self, 'log_text'):
-                self.log_text.delete('1.0', tk.END)
-
-            self.is_processing = False
-            self.cancel_processing = False
-
-            print("강제 초기화 완료")
-
-        except Exception as e:
-            print(f"강제 초기화 중에도 오류 발생: {e}")
+        self.file_path = None
+        self.file_path_var.set("")
+        self.clear_output()
+        self.clear_raw_input()
+        self.unlock_ui()
+        self.process_file_button.config(state='disabled')
+        self.drop_label.config(text="Drag & Drop QMI Log File Here\nor Click to Browse", fg=self.colors["fg"])
+        self.progress_var.set(0)
+        self.output_notebook.select(0)
+        self.update_status("🔄 Reset complete.", "success")
+        self.log("🔄 Application has been reset.")
 
     def update_status(self, message, status_type="info"):
-        """상태 업데이트"""
         self.status_var.set(message)
-
-        if status_type == "success":
-            self.status_label.config(style='Success.TLabel')
-        elif status_type == "error":
-            self.status_label.config(style='Error.TLabel')
-        elif status_type == "warning":
-            self.status_label.config(style='Warning.TLabel')
-        else:
-            self.status_label.config(style='Subtitle.TLabel')
-
+        style_map = {
+            "success": "Success.Status.TLabel",
+            "error": "Error.Status.TLabel",
+            "warning": "Warning.Status.TLabel",
+            "info": "Status.TLabel"
+        }
+        self.status_label.config(style=style_map.get(status_type, "Status.TLabel"))
         self.root.update_idletasks()
 
     def log(self, message, show_time=True):
-        """로그 출력"""
         self.log_text.config(state=tk.NORMAL)
-
-        if show_time:
-            timestamp = datetime.now().strftime("%H:%M:%S")
-            formatted_message = f"[{timestamp}] {message}\n"
-        else:
-            formatted_message = f"{message}\n"
-
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        formatted_message = f"[{timestamp}] {message}\n" if show_time else f"{message}\n"
         self.log_text.insert(tk.END, formatted_message)
         self.log_text.see(tk.END)
         self.log_text.config(state=tk.DISABLED)
         self.root.update_idletasks()
 
     def show_result(self, results):
-        """파싱 결과를 각각의 탭에 표시"""
         try:
             if isinstance(results, dict):
-                # 통합 결과 탭에 표시
                 combined_content = results.get('combined', '')
-                if hasattr(self, 'combined_text'):
-                    self.combined_text.delete('1.0', tk.END)
-                    if combined_content:
-                        self.combined_text.insert('1.0', combined_content)
-                        self.log(f"📄 통합 결과: {len(combined_content)}자 표시됨")
+                self.combined_text.delete('1.0', tk.END)
+                if combined_content:
+                    self.combined_text.insert('1.0', combined_content)
+                    self.log(f"📄 Combined result: {len(combined_content)} chars.")
 
-                # 파싱 결과만 탭에 표시
                 parsed_only_content = results.get('parsed_only', '')
-                if hasattr(self, 'parsed_only_text'):
-                    self.parsed_only_text.delete('1.0', tk.END)
-                    if parsed_only_content:
-                        self.parsed_only_text.insert('1.0', parsed_only_content)
-                        self.log(f"🔍 파싱 결과만: {len(parsed_only_content)}자 표시됨")
-                    else:
-                        self.parsed_only_text.insert('1.0',
-                                                     "파싱된 결과가 없습니다.\n\nQCAT이 처리할 수 있는 QMI 패킷이 입력에 포함되어 있는지 확인해주세요.")
-                        self.log("⚠️ 파싱 결과가 비어있음")
+                self.parsed_only_text.delete('1.0', tk.END)
+                if parsed_only_content:
+                    self.parsed_only_text.insert('1.0', parsed_only_content)
+                    self.log(f"🔍 Parsed result: {len(parsed_only_content)} chars.")
+                else:
+                    self.parsed_only_text.insert('1.0', "No QMI packets found to parse.\n\nCheck if the input contains valid QMI log entries.")
+                    self.log("⚠️ No parsed content.")
 
-                # 통계 정보 로깅
                 if 'stats' in results:
                     stats = results['stats']
-                    self.log(f"📊 처리 통계 - 라인: {stats.get('lines', 0)}, 패킷: {stats.get('packets', 0)}")
+                    self.log(f"📊 Stats - Lines: {stats.get('lines', 0)}, Packets: {stats.get('packets', 0)}")
 
-                # 파싱 결과가 있으면 해당 탭으로, 없으면 통합 결과 탭으로
                 if parsed_only_content and parsed_only_content.strip():
-                    self.output_notebook.select(1)  # 파싱 결과만 탭
-                    self.log("🎯 '파싱 결과만' 탭으로 이동")
+                    self.output_notebook.select(1)
+                    self.log("🎯 Switched to 'Parsed Only' tab.")
                 else:
-                    self.output_notebook.select(0)  # 통합 결과 탭
-                    self.log("🎯 '통합 결과' 탭으로 이동")
-
-            else:
-                # 이전 버전 호환성 (문자열 결과)
-                if hasattr(self, 'combined_text'):
-                    self.combined_text.delete('1.0', tk.END)
-                    self.combined_text.insert('1.0', str(results))
-                if hasattr(self, 'parsed_only_text'):
-                    self.parsed_only_text.delete('1.0', tk.END)
-                    self.parsed_only_text.insert('1.0', "이전 버전 결과 형식입니다.")
+                    self.output_notebook.select(0)
+                    self.log("🎯 Switched to 'Combined' tab.")
+            else: # Fallback for old string format
+                self.combined_text.delete('1.0', tk.END)
+                self.combined_text.insert('1.0', str(results))
+                self.parsed_only_text.delete('1.0', tk.END)
+                self.parsed_only_text.insert('1.0', "Result is in a legacy format.")
                 self.output_notebook.select(0)
-
         except Exception as e:
-            self.log(f"❌ 결과 표시 중 오류: {e}")
-            print(f"show_result 오류: {e}")
+            self.log(f"❌ Error displaying results: {e}")
+            print(f"show_result error: {e}")
 
     def save_results(self):
-        """결과를 파일로 저장"""
         try:
-            from tkinter import filedialog
-
-            # 현재 선택된 탭 확인
             current_tab = self.output_notebook.index(self.output_notebook.select())
+            text_widgets = [self.combined_text, self.parsed_only_text, self.log_text]
+            default_names = ["qmi_combined.txt", "qmi_parsed.txt", "qmi_log.txt"]
+            titles = ["Save Combined Result", "Save Parsed Result", "Save Log"]
 
-            if current_tab == 0:  # 통합 결과 탭
-                content = self.combined_text.get('1.0', tk.END).strip()
-                default_name = "qmi_combined_result.txt"
-                title = "통합 결과 저장"
-            elif current_tab == 1:  # 파싱 결과만 탭
-                content = self.parsed_only_text.get('1.0', tk.END).strip()
-                default_name = "qmi_parsed_only.txt"
-                title = "파싱 결과 저장"
-            else:  # 로그 탭
-                content = self.log_text.get('1.0', tk.END).strip()
-                default_name = "qmi_process_log.txt"
-                title = "처리 로그 저장"
-
+            content = text_widgets[current_tab].get('1.0', tk.END).strip()
             if not content:
-                self.update_status("저장할 내용이 없습니다.", "warning")
+                self.update_status("Nothing to save.", "warning")
                 return
 
             file_path = filedialog.asksaveasfilename(
-                title=title,
-                initialfile=default_name,
+                title=titles[current_tab],
+                initialfile=default_names[current_tab],
                 defaultextension=".txt",
-                filetypes=[
-                    ("텍스트 파일", "*.txt"),
-                    ("모든 파일", "*.*")
-                ]
+                filetypes=[("Text Files", "*.txt"), ("All Files", "*.*")]
             )
-
             if file_path:
                 with open(file_path, 'w', encoding='utf-8') as f:
                     f.write(content)
-                self.update_status(f"결과가 저장되었습니다: {file_path}", "success")
-                self.log(f"💾 결과 저장 완료: {file_path}")
-
+                self.update_status(f"💾 Result saved to {file_path}", "success")
+                self.log(f"💾 Saved: {file_path}")
         except Exception as e:
-            self.update_status(f"저장 중 오류 발생: {e}", "error")
-            self.log(f"❌ 저장 오류: {e}")
+            self.update_status(f"❌ Save error: {e}", "error")
+            self.log(f"❌ Save error: {e}")
 
     def lock_ui(self):
-        """처리 중 UI 잠금"""
         self.is_processing = True
         self.browse_button.config(state='disabled')
         self.process_file_button.config(state='disabled')
         self.process_text_button.config(state='disabled')
         self.cancel_button.config(state='normal')
-
-        # 드래그 앤 드롭 비활성화
-        self.drop_frame.config(bg='#f8f9fa')
-        self.drop_label.config(fg='#adb5bd', bg='#f8f9fa')
+        self.drop_label.config(text="Processing...", fg=self.colors["warning"])
 
     def unlock_ui(self):
-        """UI 잠금 해제"""
         self.is_processing = False
         self.cancel_processing = False
         self.browse_button.config(state='normal')
         self.process_text_button.config(state='normal')
         self.cancel_button.config(state='disabled')
-
         if self.file_path:
             self.process_file_button.config(state='normal')
-
-        # 드래그 앤 드롭 활성화
-        if self.file_path:
-            self.drop_frame.config(bg='#d5f4e6')
-            self.drop_label.config(fg='#27ae60', bg='#d5f4e6')
+            self.set_file_path(self.file_path) # Restore file selected state
         else:
-            self.drop_frame.config(bg='#ecf0f1')
-            self.drop_label.config(fg='#7f8c8d', bg='#ecf0f1')
+            self.drop_label.config(text="Drag & Drop QMI Log File Here\nor Click to Browse", fg=self.colors["fg"])
 
     def cancel_processing_action(self):
-        """처리 취소"""
         self.cancel_processing = True
-        self.update_status("⏹️ 처리 취소 요청됨...", "warning")
-        self.log("⏹️ 사용자가 처리 취소를 요청했습니다.")
+        self.update_status("⏹️ Cancelling...", "warning")
+        self.log("⏹️ User requested to cancel processing.")
 
     def start_file_processing(self):
-        """파일 처리 시작"""
-        if not self.file_path or self.is_processing:
-            return
-
+        if not self.file_path or self.is_processing: return
         if not os.path.exists(self.file_path):
-            messagebox.showerror("오류", "선택한 파일이 존재하지 않습니다.")
+            messagebox.showerror("Error", "The selected file does not exist.")
             return
-
-        # UI 잠금
         self.lock_ui()
         self.progress_var.set(0)
-        self.update_status("⚡ 파일 처리 중...", "info")
-
-        # 출력 파일 경로 설정
-        input_file_path = os.path.abspath(self.file_path)
-        input_dir = os.path.dirname(input_file_path)
-        input_filename = os.path.basename(input_file_path)
-        base_name = os.path.splitext(input_filename)[0]
-
+        self.update_status("⚡ Parsing file...", "info")
+        input_dir = os.path.dirname(self.file_path)
+        base_name = os.path.splitext(os.path.basename(self.file_path))[0]
         combined_path = os.path.join(input_dir, f"QCAT_{base_name}.txt")
         parsed_only_path = os.path.join(input_dir, f"QCAT_{base_name}_parsed_only.txt")
-
-        # 별도 스레드에서 처리
         thread = threading.Thread(target=self.process_file_thread,
-                                  args=(input_file_path, combined_path, parsed_only_path))
+                                  args=(self.file_path, combined_path, parsed_only_path))
         thread.daemon = True
         thread.start()
 
     def process_file_thread(self, input_path, combined_path, parsed_only_path):
-        """파일 처리 스레드"""
         try:
-            self.log("🚀 QMI 로그 파일 처리를 시작합니다.")
-
+            self.log("🚀 Starting file processing thread.")
             def progress_callback(message, progress=None):
-                if self.cancel_processing:
-                    raise Exception("사용자에 의해 처리가 취소되었습니다.")
-
-                self.root.after(0, lambda: self.log(message, show_time=False))
-
+                if self.cancel_processing: raise Exception("Processing cancelled by user.")
+                self.root.after(0, self.log, message, False)
                 if progress is not None:
-                    self.root.after(0, lambda: self.progress_var.set(progress))
+                    self.root.after(0, self.progress_var.set, progress)
                     if "%" in message:
-                        self.root.after(0, lambda: self.update_status(f"⚡ {message}", "info"))
-
-            result = self.processor.process_qmi_log(
-                input_path, combined_path, parsed_only_path,
-                progress_callback=progress_callback
-            )
+                        self.root.after(0, self.update_status, f"⚡ {message}", "info")
+            
+            self.processor.process_qmi_log(input_path, combined_path, parsed_only_path, progress_callback)
 
             if not self.cancel_processing:
-                self.root.after(0, lambda: self.log("✅ 파일 처리가 완료되었습니다!"))
-                self.root.after(0, lambda: self.update_status("✅ 파일 처리 완료!", "success"))
-                self.root.after(0, lambda: messagebox.showinfo(
-                    "완료",
-                    f"QMI 로그 파싱이 완료되었습니다!\n\n" 
-                    f"출력 파일:\n- {os.path.basename(combined_path)}\n" 
-                    f"- {os.path.basename(parsed_only_path)}\n\n"
-                    f"폴더: {os.path.dirname(combined_path)}"
-                ))
-
+                self.root.after(0, self.log, "✅ File processing complete!")
+                self.root.after(0, self.update_status, "✅ File parsing complete!", "success")
+                self.root.after(0, messagebox.showinfo, "Complete", f"QMI log parsing is complete!\n\nOutput files saved in:\n{os.path.dirname(combined_path)}")
         except Exception as e:
-            error_msg = f"❌ 파일 처리 중 오류: {str(e)}"
-            self.root.after(0, lambda: self.log(error_msg))
-            self.root.after(0, lambda: self.update_status("❌ 파일 처리 오류", "error"))
+            error_msg = f"❌ File processing error: {e}"
+            self.root.after(0, self.log, error_msg)
+            self.root.after(0, self.update_status, "❌ File processing error.", "error")
             if not self.cancel_processing:
-                self.root.after(0, lambda: messagebox.showerror("오류", str(e)))
-
+                self.root.after(0, messagebox.showerror, "Error", str(e))
         finally:
             self.root.after(0, self.unlock_ui)
-            self.root.after(0, lambda: self.progress_var.set(0))
+            self.root.after(0, self.progress_var.set, 0)
 
     def process_raw_data(self):
-        """텍스트 데이터 처리"""
         raw_data = self.raw_input.get(1.0, tk.END).strip()
         if not raw_data:
-            messagebox.showwarning("경고", "처리할 텍스트를 입력해주세요.")
+            messagebox.showwarning("Warning", "Input text is empty.")
             return
-
-        if self.is_processing:
-            messagebox.showwarning("경고", "현재 처리 중입니다. 완료 후 다시 시도해주세요.")
-            return
-
-        # UI 잠금
+        if self.is_processing: return
         self.lock_ui()
         self.progress_var.set(0)
-        self.update_status("⚡ 텍스트 처리 중...", "info")
-
-        # 별도 스레드에서 처리
+        self.update_status("⚡ Parsing text...", "info")
         thread = threading.Thread(target=self.process_text_thread, args=(raw_data,))
         thread.daemon = True
         thread.start()
 
     def process_text_thread(self, raw_data):
-        """텍스트 처리 스레드"""
         try:
-            self.root.after(0, lambda: self.log("🚀 텍스트 로그 처리를 시작합니다."))
-
+            self.log("🚀 Starting text processing thread.")
             def progress_callback(message, progress=None):
-                if self.cancel_processing:
-                    raise Exception("사용자에 의해 처리가 취소되었습니다.")
-
-                self.root.after(0, lambda: self.log(message, show_time=False))
-
+                if self.cancel_processing: raise Exception("Processing cancelled by user.")
+                self.root.after(0, self.log, message, False)
                 if progress is not None:
-                    self.root.after(0, lambda: self.progress_var.set(progress))
+                    self.root.after(0, self.progress_var.set, progress)
                     if "%" in message:
-                        self.root.after(0, lambda: self.update_status(f"⚡ {message}", "info"))
-
-            result = self.processor.process_qmi_text(raw_data, progress_callback=progress_callback)
+                        self.root.after(0, self.update_status, f"⚡ {message}", "info")
+            
+            result = self.processor.process_qmi_text(raw_data, progress_callback)
 
             if not self.cancel_processing:
-                self.root.after(0, lambda: self.show_result(result))
-                self.root.after(0, lambda: self.log("✅ 텍스트 처리가 완료되었습니다!"))
-                self.root.after(0, lambda: self.update_status("✅ 텍스트 처리 완료!", "success"))
-
+                self.root.after(0, self.show_result, result)
+                self.root.after(0, self.log, "✅ Text processing complete!")
+                self.root.after(0, self.update_status, "✅ Text parsing complete!", "success")
         except Exception as e:
-            error_msg = f"❌ 텍스트 처리 중 오류: {str(e)}"
-            self.root.after(0, lambda: self.log(error_msg))
-            self.root.after(0, lambda: self.update_status("❌ 텍스트 처리 오류", "error"))
+            error_msg = f"❌ Text processing error: {e}"
+            self.root.after(0, self.log, error_msg)
+            self.root.after(0, self.update_status, "❌ Text processing error.", "error")
             if not self.cancel_processing:
-                self.root.after(0, lambda: messagebox.showerror("오류", str(e)))
-
+                self.root.after(0, messagebox.showerror, "Error", str(e))
         finally:
             self.root.after(0, self.unlock_ui)
-            self.root.after(0, lambda: self.progress_var.set(0))
+            self.root.after(0, self.progress_var.set, 0)
 
 
 if __name__ == '__main__':
-    root = tk.Tk()
+    try:
+        from tkinterdnd2 import TkinterDnD
+        root = TkinterDnD.Tk()
+    except ImportError:
+        root = tk.Tk()
+        
     app = QMIParserGUI(root)
     root.mainloop()
